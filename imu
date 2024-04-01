@@ -1,0 +1,64 @@
+#include <Wire.h>
+
+const int MPU9250_ADDR = 0x68; // MPU9250 default I2C address
+const float RAD_TO_DEG_CUSTOM = 57.2957795131; // Custom conversion factor from radians to degrees
+
+void setup() {
+  Wire.begin();
+  Serial.begin(115200);
+  while (!Serial);
+
+  // Initialize MPU9250
+  Wire.beginTransmission(MPU9250_ADDR);
+  Wire.write(0x6B); // PWR_MGMT_1 register
+  Wire.write(0);    // Wake up MPU9250
+  Wire.endTransmission(true);
+}
+
+void loop() {
+  // Read accelerometer and gyroscope data
+  int16_t accel[3];
+  int16_t gyro[3];
+  readSensor(MPU9250_ADDR, 0x3B, accel, 3);
+  readSensor(MPU9250_ADDR, 0x43, gyro, 3);
+
+  // Convert raw data to meaningful units
+  float accelX = accel[0] / 16384.0; // 16384 LSB/g
+  float accelY = accel[1] / 16384.0;
+  float accelZ = accel[2] / 16384.0;
+  float gyroX = gyro[0] / 131.0; // 131 LSB/(deg/s)
+  float gyroY = gyro[1] / 131.0;
+  float gyroZ = gyro[2] / 131.0;
+
+  // Calculate roll and pitch angles using accelerometer data
+  float roll = atan2(accelY, sqrt(accelX * accelX + accelZ * accelZ)) * RAD_TO_DEG_CUSTOM;
+  float pitch = atan2(-accelX, sqrt(accelY * accelY + accelZ * accelZ)) * RAD_TO_DEG_CUSTOM;
+
+  // Calculate the change in angles using gyroscope data
+  float dt = 0.1; // Sample time in seconds
+  float rollRate = gyroX;
+  float pitchRate = gyroY;
+
+  // Integrate gyroscope data to update roll and pitch angles using a complementary filter
+  roll = 0.98 * (roll + rollRate * dt) + 0.02 * roll;
+  pitch = 0.98 * (pitch + pitchRate * dt) + 0.02 * pitch;
+
+  // Print roll and pitch angles
+  Serial.print("Roll: ");
+  Serial.print(roll);
+  Serial.print("\tPitch: ");
+  Serial.println(pitch);
+
+  delay(1000);
+}
+
+void readSensor(int addr, byte reg, int16_t* data, int len) {
+  Wire.beginTransmission(addr);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+
+  Wire.requestFrom(addr, len * 2, true);
+  for (int i = 0; i < len; i++) {
+    data[i] = (Wire.read() << 8) | Wire.read();
+  }
+}
